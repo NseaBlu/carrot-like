@@ -44,14 +44,16 @@ export function findNearestEnemyInRange(towerX, towerY, range, enemies, pathMetr
 }
 
 /**
- * @returns {{ x: number, y: number, target: object, damage: number }}
+ * @returns {{ x: number, y: number, target: object, damage: number, towerLevel: number, spawnAt: number }}
  */
-export function spawnBullet(fromX, fromY, targetEnemy, damage) {
+export function spawnBullet(fromX, fromY, targetEnemy, damage, towerLevel, spawnAt) {
   return {
     x: fromX,
     y: fromY,
     target: targetEnemy,
     damage,
+    towerLevel: towerLevel ?? 1,
+    spawnAt: spawnAt ?? 0,
   };
 }
 
@@ -76,6 +78,32 @@ export function enemyTakeDamage(enemy, amount) {
  * 每座塔独立计时：到点则在射程内索敌，有目标则 spawnBullet。
  * @param {Array<{ col: number, row: number, level?: number, nextFireAt: number }>} towers
  */
+/**
+ * 根据射程内最近敌人更新每座塔的瞄准角（弧度，0 为向右）；无目标则保持上一帧角度。
+ * @param {Array<{ col: number, row: number, level?: number, aimAngle?: number }>} towers
+ */
+export function updateTowerAiming(towers, tile, enemies, pathMetrics) {
+  if (!pathMetrics || towers.length === 0) return;
+  for (let ti = 0; ti < towers.length; ti++) {
+    const tw = towers[ti];
+    const lv = tw.level ?? 1;
+    const stats = getTowerStatsForLevel(lv);
+    const cx = tw.col * tile + tile / 2;
+    const cy = tw.row * tile + tile / 2;
+    const found = findNearestEnemyInRange(
+      cx,
+      cy,
+      stats.rangePx,
+      enemies,
+      pathMetrics
+    );
+    if (found) {
+      const ep = getEnemyPosition(found.enemy, pathMetrics);
+      tw.aimAngle = Math.atan2(ep.y - cy, ep.x - cx);
+    }
+  }
+}
+
 export function runTowerFiring(towers, tile, enemies, pathMetrics, now, bullets) {
   if (!pathMetrics) return;
   for (let ti = 0; ti < towers.length; ti++) {
@@ -83,7 +111,6 @@ export function runTowerFiring(towers, tile, enemies, pathMetrics, now, bullets)
     const lv = tw.level ?? 1;
     const stats = getTowerStatsForLevel(lv);
     if (now < tw.nextFireAt) continue;
-    tw.nextFireAt = now + stats.fireIntervalMs;
     const cx = tw.col * tile + tile / 2;
     const cy = tw.row * tile + tile / 2;
     const found = findNearestEnemyInRange(
@@ -94,7 +121,10 @@ export function runTowerFiring(towers, tile, enemies, pathMetrics, now, bullets)
       pathMetrics
     );
     if (!found) continue;
-    bullets.push(spawnBullet(cx, cy, found.enemy, stats.damage));
+    tw.nextFireAt = now + stats.fireIntervalMs;
+    bullets.push(
+      spawnBullet(cx, cy, found.enemy, stats.damage, lv, now)
+    );
   }
 }
 
@@ -116,6 +146,14 @@ export function updateBullets(bullets, dt, enemies, pathMetrics, hooks) {
     if (dist <= hitDist) {
       const hpAfter = enemyTakeDamage(b.target, b.damage);
       bullets.splice(i, 1);
+      const onExplosionFx = hooks && hooks.onExplosionFx;
+      if (onExplosionFx) {
+        if (hpAfter <= 0) {
+          onExplosionFx(tp.x, tp.y, true);
+        } else {
+          onExplosionFx(tp.x, tp.y, false, b.target);
+        }
+      }
       if (hpAfter <= 0) {
         enemies.splice(idx, 1);
         if (onGoldReward) onGoldReward(GOLD_PER_KILL);

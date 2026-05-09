@@ -17,8 +17,8 @@ export const towerRange = TILE * TOWER_RANGE_TILES;
 
 /** 防御塔等级上限（含）：1 级为新造，最高 3 级 */
 export const TOWER_MAX_LEVEL = 3;
-/** 升级花费：下标 0 = Lv1→Lv2，1 = Lv2→Lv3 */
-export const TOWER_UPGRADE_COST = [95, 140];
+/** 升级花费：下标 0 = Lv1→Lv2，1 = Lv2→Lv3（与 Bottle00/01 提示 100 金币一致） */
+export const TOWER_UPGRADE_COST = [100, 100];
 
 /** Lv1 单发伤害基准（与 towerDamageForLevel(1) 一致） */
 export const BULLET_DAMAGE = 25;

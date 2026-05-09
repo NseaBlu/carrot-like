@@ -17,6 +17,7 @@ import {
 } from "./towers.js";
 import {
   runTowerFiring,
+  updateTowerAiming,
   updateBullets,
 } from "./combat.js";
 import {
@@ -42,11 +43,14 @@ import {
   drawDefenseCarrot,
   drawEnemies,
   drawBullets,
+  drawExplosionEffects,
 } from "./sceneDraw.js";
 import {
   pickCarrotSpriteId,
   CARROT_LEAK_FLASH_MS,
 } from "./carrotSprite.js";
+import { createEnemyMonsterFrames } from "./enemySprites.js";
+import { loadTowerBottleAssets } from "./towerSprites.js";
 
 /** 关卡：JSON levels 数组下标，0=Level1；也可 URL ?level=1 */
 function readLevelIndex() {
@@ -86,6 +90,9 @@ for (let ci = 0; ci < CARROT_SPRITE_IDS.length; ci++) {
   carrotImages[sid] = cimg;
 }
 
+const enemyMonsterFrames = createEnemyMonsterFrames();
+const towerBottleAssets = loadTowerBottleAssets();
+
 const elHudLevel = document.getElementById("hud-level");
 const elHudGold = document.getElementById("hud-gold");
 const elHudLives = document.getElementById("hud-lives");
@@ -119,6 +126,8 @@ let towers = [];
 let selectedTowerIndex = -1;
 /** @type {Array<{ x: number, y: number, target: object, damage: number }>} */
 let bullets = [];
+/** @type {Array<{ x: number, y: number, kill: boolean, until: number, followEnemy?: object }>} */
+let explosionFx = [];
 let gold = STARTING_GOLD;
 /** @type {{ source: string, levelLabel: string }} */
 let loadInfo = { source: "", levelLabel: "" };
@@ -248,6 +257,7 @@ function updateHud() {
 function resetGameState() {
   towers.length = 0;
   bullets.length = 0;
+  explosionFx.length = 0;
   enemies.length = 0;
   gold = STARTING_GOLD;
   lives = INITIAL_LIVES;
@@ -313,7 +323,29 @@ function drawFrame() {
   drawRoadPolyline(ctx, roadPath, scale);
   drawPathVertices(ctx, roadPath, scale);
 
-  drawTowers(ctx, towers, TILE, scale, selectedTowerIndex);
+  const frameNow = performance.now();
+  let showUpgradeHint = false;
+  if (
+    gamePhase === "playing" &&
+    selectedTowerIndex >= 0 &&
+    selectedTowerIndex < towers.length
+  ) {
+    const uc = towerUpgradeCostFromLevel(
+      towers[selectedTowerIndex].level
+    );
+    showUpgradeHint = uc !== null && gold >= uc;
+  }
+
+  drawTowers(
+    ctx,
+    towers,
+    TILE,
+    scale,
+    selectedTowerIndex,
+    towerBottleAssets,
+    frameNow,
+    showUpgradeHint
+  );
   drawTowerRanges(
     ctx,
     towers,
@@ -325,7 +357,7 @@ function drawFrame() {
     selectedTowerIndex
   );
 
-  const carrotNow = performance.now();
+  const carrotNow = frameNow;
   const carrotSpriteId = pickCarrotSpriteId({
     lives,
     gamePhase,
@@ -341,8 +373,22 @@ function drawFrame() {
     carrotPos.y
   );
 
-  drawEnemies(ctx, enemies, pathMetrics, scale);
-  drawBullets(ctx, bullets, scale);
+  drawEnemies(ctx, enemies, pathMetrics, scale, enemyMonsterFrames);
+  drawBullets(
+    ctx,
+    bullets,
+    scale,
+    towerBottleAssets.bullet,
+    frameNow,
+    pathMetrics
+  );
+  drawExplosionEffects(
+    ctx,
+    explosionFx,
+    towerBottleAssets.explosionHit,
+    towerBottleAssets.explosionKill,
+    pathMetrics
+  );
 
   ctx.strokeStyle = "#7cfc00";
   ctx.lineWidth = 4 / scale;
@@ -401,6 +447,12 @@ function updateSimulation(dt, now) {
   if (!pathMetrics) return;
   if (gamePhase !== "playing") return;
 
+  explosionFx = explosionFx.filter(function (e) {
+    if (now >= e.until) return false;
+    if (e.followEnemy && enemies.indexOf(e.followEnemy) < 0) return false;
+    return true;
+  });
+
   const waveCfg = WAVES[currentWave];
   if (waveCfg && waveSpawnsLeft > 0 && lives > 0) {
     waveSpawnAccumulator += dt;
@@ -438,11 +490,21 @@ function updateSimulation(dt, now) {
     }
   }
 
+  updateTowerAiming(towers, TILE, enemies, pathMetrics);
   runTowerFiring(towers, TILE, enemies, pathMetrics, now, bullets);
 
   updateBullets(bullets, dt, enemies, pathMetrics, {
     onGoldReward: function (n) {
       gold += n;
+    },
+    onExplosionFx: function (x, y, killed, followEnemy) {
+      explosionFx.push({
+        x,
+        y,
+        kill: killed,
+        until: now + (killed ? 320 : 220),
+        followEnemy: killed ? undefined : followEnemy,
+      });
     },
   });
 
@@ -500,6 +562,7 @@ function tryPlaceTower(gameX, gameY, now) {
     col: c,
     row: r,
     level: 1,
+    aimAngle: 0,
     nextFireAt: now,
   });
   return true;
