@@ -26,6 +26,9 @@ export const EMBEDDED_THEME1_PATHS = {
         { id: 6, x: 665, y: 175 },
         { id: 7, x: 805, y: 175 },
       ],
+      startEndMarkers: {
+        carrotEnd: { x: 805, y: 195 },
+      },
     },
     {
       level: 2,
@@ -42,6 +45,9 @@ export const EMBEDDED_THEME1_PATHS = {
         { id: 29, x: 735, y: 455 },
         { id: 30, x: 734, y: 175 },
       ],
+      startEndMarkers: {
+        carrotEnd: { x: 735, y: 195 },
+      },
     },
     {
       level: 3,
@@ -57,6 +63,9 @@ export const EMBEDDED_THEME1_PATHS = {
         { id: 63, x: 245, y: 455 },
         { id: 64, x: 805, y: 455 },
       ],
+      startEndMarkers: {
+        carrotEnd: { x: 805, y: 475 },
+      },
     },
   ],
 };
@@ -92,5 +101,11 @@ export function getRoadPathForLevel(data, levelIndex) {
   const lv = levels[levelIndex];
   const roadPath = lv.roadPath;
   if (!roadPath) throw new Error("关卡缺少 roadPath");
-  return { levelMeta: lv, roadPath };
+  const last = roadPath[roadPath.length - 1];
+  const carrotEnd = lv.startEndMarkers?.carrotEnd ?? last;
+  return {
+    levelMeta: lv,
+    roadPath,
+    carrotPos: { x: carrotEnd.x, y: carrotEnd.y },
+  };
 }

@@ -13,19 +13,19 @@ import {
 } from "./gridLogic.js";
 import {
   towerCost,
-  towerRange,
   cellIndexFromGamePoint,
 } from "./towers.js";
 import {
   runTowerFiring,
   updateBullets,
-  BULLET_DAMAGE,
 } from "./combat.js";
 import {
   WAVES,
   STARTING_GOLD,
   INITIAL_LIVES,
-  ENEMY_MOVE_SPEED,
+  getTowerStatsForLevel,
+  towerUpgradeCostFromLevel,
+  TOWER_MAX_LEVEL,
 } from "./gameBalance.js";
 import { buildPathMetrics } from "./pathFollow.js";
 import {
@@ -39,9 +39,14 @@ import {
   drawPathIceTiles,
   drawTowerRanges,
   drawTowers,
+  drawDefenseCarrot,
   drawEnemies,
   drawBullets,
 } from "./sceneDraw.js";
+import {
+  pickCarrotSpriteId,
+  CARROT_LEAK_FLASH_MS,
+} from "./carrotSprite.js";
 
 /** 关卡：JSON levels 数组下标，0=Level1；也可 URL ?level=1 */
 function readLevelIndex() {
@@ -68,6 +73,19 @@ bgImage.src = new URL("../assets/background.png", import.meta.url).href;
 const pathIceImg = new Image();
 pathIceImg.src = new URL("../assets/path-ice-tile.png", import.meta.url).href;
 
+const CARROT_SPRITE_IDS = [1, 2, 3, 7, 8, 9, 10, 11, 12, 13, 14];
+/** @type {Record<number, HTMLImageElement>} */
+const carrotImages = {};
+for (let ci = 0; ci < CARROT_SPRITE_IDS.length; ci++) {
+  const sid = CARROT_SPRITE_IDS[ci];
+  const cimg = new Image();
+  cimg.src = new URL(
+    "../assets/carrot/hlb1_" + sid + ".png",
+    import.meta.url
+  ).href;
+  carrotImages[sid] = cimg;
+}
+
 const elHudLevel = document.getElementById("hud-level");
 const elHudGold = document.getElementById("hud-gold");
 const elHudLives = document.getElementById("hud-lives");
@@ -77,6 +95,7 @@ const elHudEnemies = document.getElementById("hud-enemies");
 const elHudLeaked = document.getElementById("hud-leaked");
 const elHudPhase = document.getElementById("hud-phase");
 const elHudTowerCost = document.getElementById("hud-tower-cost");
+const elHudTowerSel = document.getElementById("hud-tower-sel");
 const btnRestart = document.getElementById("btn-restart");
 
 /** @type {"playing" | "win" | "lose"} */
@@ -87,11 +106,17 @@ let offsetX = 0;
 let offsetY = 0;
 
 let roadPath = [];
+/** 终点萝卜绘制锚点（脚底）；来自关卡 startEndMarkers.carrotEnd */
+let carrotPos = { x: 805, y: 195 };
+/** 漏怪瞬间播放受击帧，截止时间戳（performance.now） */
+let carrotLeakFlashUntil = 0;
 /** @type {ReturnType<typeof buildPathMetrics>} */
 let pathMetrics = null;
 let buildableGrid = null;
-/** @type {Array<{ col: number, row: number, nextFireAt: number }>} */
+/** @type {Array<{ col: number, row: number, level: number, nextFireAt: number }>} */
 let towers = [];
+/** 选中塔在 towers 中的下标；-1 表示未选中 */
+let selectedTowerIndex = -1;
 /** @type {Array<{ x: number, y: number, target: object, damage: number }>} */
 let bullets = [];
 let gold = STARTING_GOLD;
@@ -118,6 +143,36 @@ let lastFrameTime = null;
 
 const clickMarks = [];
 const MAX_MARKS = 32;
+
+function findTowerIndexAtCell(c, r) {
+  for (let i = 0; i < towers.length; i++) {
+    if (towers[i].col === c && towers[i].row === r) return i;
+  }
+  return -1;
+}
+
+function tryUpgradeSelectedTower(now) {
+  if (gamePhase !== "playing") return false;
+  if (selectedTowerIndex < 0 || selectedTowerIndex >= towers.length) {
+    return false;
+  }
+  const tw = towers[selectedTowerIndex];
+  if (tw.level >= TOWER_MAX_LEVEL) {
+    towerHintText = "该塔已满级";
+    towerHintUntil = now + 2400;
+    return false;
+  }
+  const cost = towerUpgradeCostFromLevel(tw.level);
+  if (cost === null) return false;
+  if (gold < cost) {
+    towerHintText = "金币不足（升级需 " + cost + "，当前 " + gold + "）";
+    towerHintUntil = now + 3200;
+    return false;
+  }
+  gold -= cost;
+  tw.level += 1;
+  return true;
+}
 
 function cssPixelToGame(px, py) {
   const gameX = (px - offsetX) / scale;
@@ -167,6 +222,26 @@ function updateHud() {
       : gamePhase === "win"
         ? "胜利"
         : "失败";
+
+  if (elHudTowerSel) {
+    if (
+      gamePhase !== "playing" ||
+      selectedTowerIndex < 0 ||
+      selectedTowerIndex >= towers.length
+    ) {
+      elHudTowerSel.textContent = "（点击塔升级）";
+    } else {
+      const tw = towers[selectedTowerIndex];
+      const cost = towerUpgradeCostFromLevel(tw.level);
+      if (cost === null) {
+        elHudTowerSel.textContent = "Lv." + tw.level + " 已满级";
+      } else {
+        elHudTowerSel.textContent =
+          "Lv." + tw.level + " → 升级需 " + cost;
+      }
+    }
+  }
+
 }
 
 /** 重置战斗状态（不关卡数据）：塔、弹、敌、经济、波次、胜负 */
@@ -178,12 +253,15 @@ function resetGameState() {
   lives = INITIAL_LIVES;
   leaked = 0;
   currentWave = 0;
-  waveSpawnsLeft = WAVES.length > 0 ? WAVES[0].count : 0;
+  waveSpawnsLeft =
+    WAVES.length > 0 ? WAVES[0].spawnTypes.length : 0;
   waveSpawnAccumulator =
     WAVES.length > 0 ? WAVES[0].spawnIntervalSec : 0;
   towerHintText = "";
   towerHintUntil = 0;
   clickMarks.length = 0;
+  selectedTowerIndex = -1;
+  carrotLeakFlashUntil = 0;
   gamePhase = "playing";
   lastFrameTime = null;
   updateHud();
@@ -235,8 +313,33 @@ function drawFrame() {
   drawRoadPolyline(ctx, roadPath, scale);
   drawPathVertices(ctx, roadPath, scale);
 
-  drawTowers(ctx, towers, TILE, scale);
-  drawTowerRanges(ctx, towers, TILE, towerRange, scale);
+  drawTowers(ctx, towers, TILE, scale, selectedTowerIndex);
+  drawTowerRanges(
+    ctx,
+    towers,
+    TILE,
+    function (t) {
+      return getTowerStatsForLevel(t.level ?? 1).rangePx;
+    },
+    scale,
+    selectedTowerIndex
+  );
+
+  const carrotNow = performance.now();
+  const carrotSpriteId = pickCarrotSpriteId({
+    lives,
+    gamePhase,
+    leakFlashUntil: carrotLeakFlashUntil,
+    now: carrotNow,
+    enemies,
+    metrics: pathMetrics,
+  });
+  drawDefenseCarrot(
+    ctx,
+    carrotImages[carrotSpriteId],
+    carrotPos.x,
+    carrotPos.y
+  );
 
   drawEnemies(ctx, enemies, pathMetrics, scale);
   drawBullets(ctx, bullets, scale);
@@ -307,7 +410,10 @@ function updateSimulation(dt, now) {
       lives > 0
     ) {
       waveSpawnAccumulator -= waveCfg.spawnIntervalSec;
-      enemies.push(spawnEnemy(waveCfg.hpMultiplier));
+      const types = waveCfg.spawnTypes;
+      const idx = types.length - waveSpawnsLeft;
+      const typeChar = types.charAt(idx);
+      enemies.push(spawnEnemy(waveCfg.hpMultiplier, typeChar));
       waveSpawnsLeft--;
     }
   }
@@ -318,25 +424,21 @@ function updateSimulation(dt, now) {
     currentWave < WAVES.length - 1
   ) {
     currentWave++;
-    waveSpawnsLeft = WAVES[currentWave].count;
+    waveSpawnsLeft = WAVES[currentWave].spawnTypes.length;
     waveSpawnAccumulator = WAVES[currentWave].spawnIntervalSec;
   }
 
   for (let i = enemies.length - 1; i >= 0; i--) {
-    const reached = updateEnemyAlongPath(
-      enemies[i],
-      pathMetrics,
-      ENEMY_MOVE_SPEED,
-      dt
-    );
+    const reached = updateEnemyAlongPath(enemies[i], pathMetrics, dt);
     if (reached) {
       leaked += 1;
+      carrotLeakFlashUntil = now + CARROT_LEAK_FLASH_MS;
       lives = Math.max(0, lives - 1);
       enemies.splice(i, 1);
     }
   }
 
-  runTowerFiring(towers, TILE, towerRange, enemies, pathMetrics, now, bullets, BULLET_DAMAGE);
+  runTowerFiring(towers, TILE, enemies, pathMetrics, now, bullets);
 
   updateBullets(bullets, dt, enemies, pathMetrics, {
     onGoldReward: function (n) {
@@ -397,6 +499,7 @@ function tryPlaceTower(gameX, gameY, now) {
   towers.push({
     col: c,
     row: r,
+    level: 1,
     nextFireAt: now,
   });
   return true;
@@ -414,7 +517,18 @@ function onPointerDown(e) {
     gameY >= -eps &&
     gameY <= LOGICAL_H + eps
   ) {
-    if (tryPlaceTower(gameX, gameY, now)) return;
+    const { c, r } = cellIndexFromGamePoint(gameX, gameY, TILE);
+    const hitTower = findTowerIndexAtCell(c, r);
+    if (hitTower >= 0) {
+      selectedTowerIndex = hitTower;
+      tryUpgradeSelectedTower(now);
+      return;
+    }
+    if (tryPlaceTower(gameX, gameY, now)) {
+      selectedTowerIndex = towers.length - 1;
+      return;
+    }
+    selectedTowerIndex = -1;
     clickMarks.push({ x: gameX, y: gameY });
     if (clickMarks.length > MAX_MARKS) clickMarks.shift();
   }
@@ -425,9 +539,11 @@ window.addEventListener("resize", onResize);
 
 window.addEventListener("keydown", function (e) {
   if (e.repeat) return;
-  if (e.key.toLowerCase() === "r") {
+  const k = e.key.toLowerCase();
+  if (k === "r") {
     e.preventDefault();
     restartGame();
+    return;
   }
 });
 
@@ -445,11 +561,12 @@ if (typeof ResizeObserver !== "undefined") {
 
 async function bootstrap() {
   const result = await loadTheme1Paths(pathsJsonUrl);
-  const { roadPath: rp, levelMeta } = getRoadPathForLevel(
+  const { roadPath: rp, levelMeta, carrotPos: cp } = getRoadPathForLevel(
     result.data,
     levelIndex
   );
   roadPath = rp;
+  carrotPos = cp;
   pathMetrics = buildPathMetrics(roadPath);
   buildableGrid = computeBuildableGrid(roadPath);
   loadInfo = {

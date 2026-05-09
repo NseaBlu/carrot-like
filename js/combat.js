@@ -9,9 +9,10 @@ import {
   BULLET_DAMAGE,
   BULLET_RADIUS,
   GOLD_PER_KILL,
+  getTowerStatsForLevel,
 } from "./gameBalance.js";
 
-/** 判定命中：子弹与敌人中心距离 ≤ 此值（略大于敌半径） */
+/** 基准命中距离（类型 N 半径）；实际判定见 updateBullets 内每敌人 radius */
 export const BULLET_HIT_DIST = ENEMY_RADIUS + BULLET_RADIUS + 2;
 
 export {
@@ -73,19 +74,27 @@ export function enemyTakeDamage(enemy, amount) {
  */
 /**
  * 每座塔独立计时：到点则在射程内索敌，有目标则 spawnBullet。
- * @param {Array<{ col: number, row: number, nextFireAt: number }>} towers
+ * @param {Array<{ col: number, row: number, level?: number, nextFireAt: number }>} towers
  */
-export function runTowerFiring(towers, tile, rangePx, enemies, pathMetrics, now, bullets, damageAmount) {
+export function runTowerFiring(towers, tile, enemies, pathMetrics, now, bullets) {
   if (!pathMetrics) return;
   for (let ti = 0; ti < towers.length; ti++) {
     const tw = towers[ti];
+    const lv = tw.level ?? 1;
+    const stats = getTowerStatsForLevel(lv);
     if (now < tw.nextFireAt) continue;
-    tw.nextFireAt = now + TOWER_FIRE_INTERVAL_MS;
+    tw.nextFireAt = now + stats.fireIntervalMs;
     const cx = tw.col * tile + tile / 2;
     const cy = tw.row * tile + tile / 2;
-    const found = findNearestEnemyInRange(cx, cy, rangePx, enemies, pathMetrics);
+    const found = findNearestEnemyInRange(
+      cx,
+      cy,
+      stats.rangePx,
+      enemies,
+      pathMetrics
+    );
     if (!found) continue;
-    bullets.push(spawnBullet(cx, cy, found.enemy, damageAmount));
+    bullets.push(spawnBullet(cx, cy, found.enemy, stats.damage));
   }
 }
 
@@ -102,7 +111,9 @@ export function updateBullets(bullets, dt, enemies, pathMetrics, hooks) {
     let dx = tp.x - b.x;
     let dy = tp.y - b.y;
     let dist = Math.hypot(dx, dy);
-    if (dist <= BULLET_HIT_DIST) {
+    const hitDist =
+      (b.target.radius ?? ENEMY_RADIUS) + BULLET_RADIUS + 2;
+    if (dist <= hitDist) {
       const hpAfter = enemyTakeDamage(b.target, b.damage);
       bullets.splice(i, 1);
       if (hpAfter <= 0) {
