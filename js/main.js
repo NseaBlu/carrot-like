@@ -61,10 +61,15 @@ if (qsUrl) pathsJsonUrl = qsUrl;
 const canvas = document.getElementById("view");
 const ctx = canvas.getContext("2d");
 
+const elHudLevel = document.getElementById("hud-level");
 const elHudGold = document.getElementById("hud-gold");
 const elHudLives = document.getElementById("hud-lives");
 const elHudWave = document.getElementById("hud-wave");
+const elHudTowers = document.getElementById("hud-towers");
+const elHudEnemies = document.getElementById("hud-enemies");
+const elHudLeaked = document.getElementById("hud-leaked");
 const elHudPhase = document.getElementById("hud-phase");
+const elHudTowerCost = document.getElementById("hud-tower-cost");
 const btnRestart = document.getElementById("btn-restart");
 
 /** @type {"playing" | "win" | "lose"} */
@@ -132,11 +137,23 @@ function checkVictory() {
 }
 
 function updateHud() {
-  if (!elHudGold || !elHudLives || !elHudWave || !elHudPhase) return;
+  if (
+    !elHudGold ||
+    !elHudLives ||
+    !elHudWave ||
+    !elHudPhase
+  ) {
+    return;
+  }
+  if (elHudLevel) elHudLevel.textContent = loadInfo.levelLabel || "—";
+  if (elHudTowerCost) elHudTowerCost.textContent = String(towerCost);
   elHudGold.textContent = String(gold);
   elHudLives.textContent = String(lives);
   const cur = WAVES.length ? Math.min(currentWave + 1, WAVES.length) : 0;
   elHudWave.textContent = WAVES.length ? cur + "/" + WAVES.length : "—";
+  if (elHudTowers) elHudTowers.textContent = String(towers.length);
+  if (elHudEnemies) elHudEnemies.textContent = String(enemies.length);
+  if (elHudLeaked) elHudLeaked.textContent = String(leaked);
   elHudPhase.textContent =
     gamePhase === "playing"
       ? "进行中"
@@ -229,28 +246,6 @@ function drawFrame() {
     ctx.lineTo(m.x - crossHalf, m.y + crossHalf);
     ctx.stroke();
   }
-
-  ctx.fillStyle = "rgba(255, 255, 255, 0.82)";
-  ctx.font = `${Math.max(12, 13)}px system-ui, sans-serif`;
-  ctx.textBaseline = "top";
-  ctx.fillText(
-    loadInfo.levelLabel +
-      " · 敌 " +
-      enemies.length +
-      " · 塔 " +
-      towers.length +
-      " · 漏怪 " +
-      leaked +
-      " · 造价 " +
-      towerCost +
-      " · R/重开",
-    12,
-    12
-  );
-
-  ctx.fillStyle = "rgba(200, 220, 200, 0.65)";
-  ctx.font = `${Math.max(11, 12)}px system-ui, sans-serif`;
-  ctx.fillText(pathsJsonUrl + " · ?level=", 12, 30);
 
   if (gamePhase === "win" || gamePhase === "lose") {
     ctx.save();
