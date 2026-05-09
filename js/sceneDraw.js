@@ -4,6 +4,7 @@
 
 import { getEnemyPosition, ENEMY_RADIUS } from "./enemies.js";
 import { BULLET_RADIUS } from "./combat.js";
+import { TILE } from "./gridLogic.js";
 
 /**
  * @param {CanvasRenderingContext2D} ctx — 已处于地图逻辑坐标（translate+scale 之后）
@@ -24,6 +25,47 @@ export function drawBuildableTowerCells(ctx, grid, scale) {
       ctx.fillRect(x, y, tile, tile);
       ctx.strokeRect(x + lw * 0.5, y + lw * 0.5, tile - lw, tile - lw);
     }
+  }
+}
+
+/**
+ * 沿 roadPath 折线平铺冰格贴图，缩放为 TILE×TILE（与地图格一致）。
+ * @param {HTMLImageElement} pathTileImg
+ */
+export function drawPathIceTiles(ctx, roadPath, pathTileImg) {
+  if (!roadPath || roadPath.length < 2 || !pathTileImg || !pathTileImg.complete || pathTileImg.naturalWidth <= 0) {
+    return;
+  }
+  const ts = TILE;
+  for (let i = 0; i < roadPath.length - 1; i++) {
+    const ax = roadPath[i].x;
+    const ay = roadPath[i].y;
+    const bx = roadPath[i + 1].x;
+    const by = roadPath[i + 1].y;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.001) continue;
+    const ux = dx / len;
+    const uy = dy / len;
+    const angle = Math.atan2(dy, dx);
+    let traveled = 0;
+    while (traveled < len - 1e-6) {
+      const piece = Math.min(ts, len - traveled);
+      const cx = ax + ux * (traveled + piece / 2);
+      const cy = ay + uy * (traveled + piece / 2);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.drawImage(pathTileImg, -piece / 2, -ts / 2, piece, ts);
+      ctx.restore();
+      traveled += piece;
+    }
+  }
+  for (let i = 1; i < roadPath.length - 1; i++) {
+    const px = roadPath[i].x;
+    const py = roadPath[i].y;
+    ctx.drawImage(pathTileImg, px - ts / 2, py - ts / 2, ts, ts);
   }
 }
 

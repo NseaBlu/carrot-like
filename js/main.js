@@ -36,6 +36,7 @@ import {
   drawBuildableTowerCells,
   drawRoadPolyline,
   drawPathVertices,
+  drawPathIceTiles,
   drawTowerRanges,
   drawTowers,
   drawEnemies,
@@ -60,6 +61,12 @@ if (qsUrl) pathsJsonUrl = qsUrl;
 
 const canvas = document.getElementById("view");
 const ctx = canvas.getContext("2d");
+
+/** 逻辑区域 910×490 背景（与 index 同级目录下的 assets） */
+const bgImage = new Image();
+bgImage.src = new URL("../assets/background.png", import.meta.url).href;
+const pathIceImg = new Image();
+pathIceImg.src = new URL("../assets/path-ice-tile.png", import.meta.url).href;
 
 const elHudLevel = document.getElementById("hud-level");
 const elHudGold = document.getElementById("hud-gold");
@@ -214,12 +221,17 @@ function drawFrame() {
   ctx.translate(offsetX, offsetY);
   ctx.scale(scale, scale);
 
-  ctx.fillStyle = "#2d4a3e";
-  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+  if (bgImage.complete && bgImage.naturalWidth > 0) {
+    ctx.drawImage(bgImage, 0, 0, LOGICAL_W, LOGICAL_H);
+  } else {
+    ctx.fillStyle = "#2d4a3e";
+    ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+  }
 
   if (buildableGrid) {
     drawBuildableTowerCells(ctx, buildableGrid, scale);
   }
+  drawPathIceTiles(ctx, roadPath, pathIceImg);
   drawRoadPolyline(ctx, roadPath, scale);
   drawPathVertices(ctx, roadPath, scale);
 
