@@ -83,6 +83,102 @@
       background: rgba(100, 140, 220, 0.5);
     }
 
+    #btn-map-assist {
+      padding: 0.35rem 0.75rem;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      background: rgba(60, 90, 70, 0.45);
+      color: #fff;
+      margin-right: 0.35rem;
+    }
+
+    #btn-map-assist:hover {
+      background: rgba(80, 120, 90, 0.55);
+    }
+
+    #btn-map-assist[aria-pressed="true"] {
+      background: rgba(90, 140, 110, 0.65);
+      border-color: rgba(160, 220, 180, 0.45);
+    }
+
+    #stage-clear-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.58);
+      pointer-events: auto;
+    }
+
+    #stage-clear-overlay[hidden] {
+      display: none !important;
+    }
+
+    #stage-clear-overlay:not([hidden]) {
+      display: flex;
+    }
+
+    #stage-clear-dialog {
+      max-width: min(92vw, 380px);
+      padding: 1.35rem 1.5rem;
+      border-radius: 12px;
+      background: rgba(22, 26, 38, 0.97);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+      font-family: system-ui, "Segoe UI", sans-serif;
+      color: #eee;
+      text-align: center;
+    }
+
+    #stage-clear-dialog h2 {
+      margin: 0 0 0.6rem;
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #b8e8c8;
+    }
+
+    #stage-clear-dialog p {
+      margin: 0 0 1.15rem;
+      font-size: 0.95rem;
+      line-height: 1.45;
+      color: rgba(230, 235, 245, 0.88);
+    }
+
+    #stage-clear-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      justify-content: center;
+    }
+
+    #stage-clear-actions button {
+      padding: 0.45rem 1rem;
+      font-size: 14px;
+      cursor: pointer;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      color: #fff;
+    }
+
+    #btn-stage-clear-next {
+      background: rgba(80, 140, 220, 0.55);
+    }
+
+    #btn-stage-clear-next:hover {
+      background: rgba(100, 160, 240, 0.65);
+    }
+
+    #btn-stage-clear-replay {
+      background: rgba(70, 85, 105, 0.55);
+    }
+
+    #btn-stage-clear-replay:hover {
+      background: rgba(90, 105, 130, 0.65);
+    }
+
     #hud-level {
       color: #a8d4ff;
       font-weight: 600;
@@ -118,9 +214,26 @@
         <span><strong class="label">敌</strong><span class="val" id="hud-enemies">0</span></span>
         <span><strong class="label">漏怪</strong><span class="val" id="hud-leaked">0</span></span>
         <span><strong class="label">状态</strong><span class="val" id="hud-phase">进行中</span></span>
+        <button type="button" id="btn-map-assist" aria-pressed="false" title="显示逻辑区边框、格线、可建格/不可建红叉、塔射程、路径折线与顶点">辅助：关</button>
         <button type="button" id="btn-restart">重开</button>
       </div>
     </header>
+    <div
+      id="stage-clear-overlay"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="stage-clear-title"
+    >
+      <div id="stage-clear-dialog">
+        <h2 id="stage-clear-title">通关成功</h2>
+        <p>本关已完成。是否进入下一关，或在本关重新开局？</p>
+        <div id="stage-clear-actions">
+          <button type="button" id="btn-stage-clear-next">进入下一关</button>
+          <button type="button" id="btn-stage-clear-replay">本关重开</button>
+        </div>
+      </div>
+    </div>
     <div id="game">
       <canvas id="view" aria-label="游戏画布"></canvas>
     </div>

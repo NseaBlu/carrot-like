@@ -21,7 +21,7 @@ import {
   updateBullets,
 } from "./combat.js";
 import {
-  WAVES,
+  wavesForTheme1Level,
   STARTING_GOLD,
   INITIAL_LIVES,
   getTowerStatsForLevel,
@@ -34,7 +34,7 @@ import {
   updateEnemyAlongPath,
 } from "./enemies.js";
 import {
-  drawBuildableTowerCells,
+  drawMapAssistGrid,
   drawRoadPolyline,
   drawPathVertices,
   drawPathIceTiles,
@@ -52,7 +52,12 @@ import {
 import { createEnemyMonsterFrames } from "./enemySprites.js";
 import { loadTowerBottleAssets } from "./towerSprites.js";
 
-/** 关卡：JSON levels 数组下标，0=Level1；也可 URL ?level=1 */
+/** 当前关卡波次表（Theme1，随 levelIndex 切换） */
+function activeWaves() {
+  return wavesForTheme1Level(levelIndex);
+}
+
+/** 关卡：theme1-paths.json 的 levels 下标，0=第 1 关；URL ?level=1 为第 2 关 */
 function readLevelIndex() {
   const q = new URLSearchParams(window.location.search).get("level");
   if (q !== null && q !== "") {
@@ -104,13 +109,23 @@ const elHudPhase = document.getElementById("hud-phase");
 const elHudTowerCost = document.getElementById("hud-tower-cost");
 const elHudTowerSel = document.getElementById("hud-tower-sel");
 const btnRestart = document.getElementById("btn-restart");
+const btnMapAssist = document.getElementById("btn-map-assist");
+const elStageClearOverlay = document.getElementById("stage-clear-overlay");
+const btnStageClearNext = document.getElementById("btn-stage-clear-next");
+const btnStageClearReplay = document.getElementById("btn-stage-clear-replay");
 
-/** @type {"playing" | "win" | "lose"} */
+/** @type {"playing" | "win" | "lose" | "stageClear"} */
 let gamePhase = "playing";
+
+/** 地图边框、格线、可建格/不可建红叉、塔射程、路径折线与顶点；默认关闭 */
+let showMapAssistOverlay = false;
 
 let scale = 1;
 let offsetX = 0;
 let offsetY = 0;
+
+/** fetch 到的 theme1-paths 全文；用于通关后进下一关切换几何 */
+let themePathsData = null;
 
 let roadPath = [];
 /** 终点萝卜绘制锚点（脚底）；来自关卡 startEndMarkers.carrotEnd */
@@ -137,7 +152,7 @@ let enemies = [];
 let lives = INITIAL_LIVES;
 let leaked = 0;
 
-/** 当前波（0-based，对应 WAVES 下标） */
+/** 当前波（0-based，对应当前关卡波次表下标） */
 let currentWave = 0;
 /** 本波剩余待生成数量 */
 let waveSpawnsLeft = 0;
@@ -191,20 +206,53 @@ function cssPixelToGame(px, py) {
 
 /**
  * 胜利判定（全部满足才算通关）：
- * - currentWave 已为最后一波下标：currentWave === WAVES.length - 1
+ * - currentWave 已为最后一波下标：currentWave === activeWaves().length - 1
  * - 该波计划生成的敌人已全部出场：waveSpawnsLeft === 0
  * - 场上没有任何敌人：enemies.length === 0（含击杀与漏怪离场）
  * - 仍有生命：lives > 0
  *
  * 失败判定：lives <= 0（漏怪扣生命至 0）。
+ *
+ * 通关且仍存在下一关：进入 stageClear，DOM 弹窗询问是否进入下一关；
+ * 最后一关通关仍为胜利态。
  */
 function checkVictory() {
   if (gamePhase !== "playing" || lives <= 0) return;
-  if (WAVES.length === 0) return;
-  if (currentWave !== WAVES.length - 1) return;
+  if (activeWaves().length === 0) return;
+  if (currentWave !== activeWaves().length - 1) return;
   if (waveSpawnsLeft !== 0) return;
   if (enemies.length !== 0) return;
+
+  const levelsArr = themePathsData && themePathsData.levels;
+  const hasNextLevel =
+    levelsArr && levelIndex < levelsArr.length - 1;
+
+  if (hasNextLevel) {
+    gamePhase = "stageClear";
+    lastFrameTime = null;
+    showStageClearDialog();
+    return;
+  }
+
   gamePhase = "win";
+}
+
+/**
+ * 切换 roads.json 关卡索引：刷新路径、萝卜点、可建格与 HUD 关卡名。
+ * @param {number} idx — themePathsData.levels 下标
+ */
+function applyLevelGeometry(idx) {
+  if (!themePathsData) return;
+  const { roadPath: rp, levelMeta, carrotPos: cp } = getRoadPathForLevel(
+    themePathsData,
+    idx
+  );
+  roadPath = rp;
+  carrotPos = cp;
+  pathMetrics = buildPathMetrics(roadPath);
+  buildableGrid = computeBuildableGrid(roadPath);
+  loadInfo.levelLabel =
+    "Level " + levelMeta.level + " (levels[" + idx + "])";
 }
 
 function updateHud() {
@@ -220,21 +268,24 @@ function updateHud() {
   if (elHudTowerCost) elHudTowerCost.textContent = String(towerCost);
   elHudGold.textContent = String(gold);
   elHudLives.textContent = String(lives);
-  const cur = WAVES.length ? Math.min(currentWave + 1, WAVES.length) : 0;
-  elHudWave.textContent = WAVES.length ? cur + "/" + WAVES.length : "—";
+  const wlen = activeWaves().length;
+  const cur = wlen ? Math.min(currentWave + 1, wlen) : 0;
+  elHudWave.textContent = wlen ? cur + "/" + wlen : "—";
   if (elHudTowers) elHudTowers.textContent = String(towers.length);
   if (elHudEnemies) elHudEnemies.textContent = String(enemies.length);
   if (elHudLeaked) elHudLeaked.textContent = String(leaked);
   elHudPhase.textContent =
     gamePhase === "playing"
       ? "进行中"
-      : gamePhase === "win"
-        ? "胜利"
-        : "失败";
+      : gamePhase === "stageClear"
+        ? "通关（待选择）"
+        : gamePhase === "win"
+          ? "胜利"
+          : "失败";
 
   if (elHudTowerSel) {
     if (
-      gamePhase !== "playing" ||
+      (gamePhase !== "playing" && gamePhase !== "stageClear") ||
       selectedTowerIndex < 0 ||
       selectedTowerIndex >= towers.length
     ) {
@@ -263,10 +314,9 @@ function resetGameState() {
   lives = INITIAL_LIVES;
   leaked = 0;
   currentWave = 0;
-  waveSpawnsLeft =
-    WAVES.length > 0 ? WAVES[0].spawnTypes.length : 0;
-  waveSpawnAccumulator =
-    WAVES.length > 0 ? WAVES[0].spawnIntervalSec : 0;
+  const aw = activeWaves();
+  waveSpawnsLeft = aw.length > 0 ? aw[0].spawnTypes.length : 0;
+  waveSpawnAccumulator = aw.length > 0 ? aw[0].spawnIntervalSec : 0;
   towerHintText = "";
   towerHintUntil = 0;
   clickMarks.length = 0;
@@ -277,8 +327,54 @@ function resetGameState() {
   updateHud();
 }
 
-function restartGame() {
+function hideStageClearDialog() {
+  if (elStageClearOverlay) elStageClearOverlay.hidden = true;
+}
+
+function showStageClearDialog() {
+  if (elStageClearOverlay) elStageClearOverlay.hidden = false;
+  updateHud();
+}
+
+function confirmNextLevel() {
+  hideStageClearDialog();
+  const levelsArr = themePathsData && themePathsData.levels;
+  if (!levelsArr || levelIndex >= levelsArr.length - 1) return;
+  levelIndex++;
+  applyLevelGeometry(levelIndex);
   resetGameState();
+  lastFrameTime = null;
+  towerHintText = "已进入下一关";
+  towerHintUntil = performance.now() + 2800;
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("level", String(levelIndex));
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+  } catch (err) {
+    /* ignore */
+  }
+}
+
+function replayCurrentLevelFromDialog() {
+  hideStageClearDialog();
+  resetGameState();
+  lastFrameTime = null;
+}
+
+function restartGame() {
+  hideStageClearDialog();
+  resetGameState();
+}
+
+function syncMapAssistButton() {
+  if (!btnMapAssist) return;
+  btnMapAssist.setAttribute(
+    "aria-pressed",
+    showMapAssistOverlay ? "true" : "false"
+  );
+  btnMapAssist.textContent = showMapAssistOverlay
+    ? "辅助：开"
+    : "辅助：关";
 }
 
 function updateLayout() {
@@ -316,12 +412,12 @@ function drawFrame() {
     ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
   }
 
-  if (buildableGrid) {
-    drawBuildableTowerCells(ctx, buildableGrid, scale);
-  }
   drawPathIceTiles(ctx, roadPath, pathIceImg);
-  drawRoadPolyline(ctx, roadPath, scale);
-  drawPathVertices(ctx, roadPath, scale);
+  if (showMapAssistOverlay && buildableGrid) {
+    drawMapAssistGrid(ctx, buildableGrid, scale);
+    drawRoadPolyline(ctx, roadPath, scale);
+    drawPathVertices(ctx, roadPath, scale);
+  }
 
   const frameNow = performance.now();
   let showUpgradeHint = false;
@@ -346,16 +442,18 @@ function drawFrame() {
     frameNow,
     showUpgradeHint
   );
-  drawTowerRanges(
-    ctx,
-    towers,
-    TILE,
-    function (t) {
-      return getTowerStatsForLevel(t.level ?? 1).rangePx;
-    },
-    scale,
-    selectedTowerIndex
-  );
+  if (showMapAssistOverlay) {
+    drawTowerRanges(
+      ctx,
+      towers,
+      TILE,
+      function (t) {
+        return getTowerStatsForLevel(t.level ?? 1).rangePx;
+      },
+      scale,
+      selectedTowerIndex
+    );
+  }
 
   const carrotNow = frameNow;
   const carrotSpriteId = pickCarrotSpriteId({
@@ -390,9 +488,11 @@ function drawFrame() {
     pathMetrics
   );
 
-  ctx.strokeStyle = "#7cfc00";
-  ctx.lineWidth = 4 / scale;
-  ctx.strokeRect(0, 0, LOGICAL_W, LOGICAL_H);
+  if (showMapAssistOverlay) {
+    ctx.strokeStyle = "#7cfc00";
+    ctx.lineWidth = 4 / scale;
+    ctx.strokeRect(0, 0, LOGICAL_W, LOGICAL_H);
+  }
 
   const crossHalf = 14;
   ctx.strokeStyle = "#ff6b6b";
@@ -453,7 +553,8 @@ function updateSimulation(dt, now) {
     return true;
   });
 
-  const waveCfg = WAVES[currentWave];
+  const waves = activeWaves();
+  const waveCfg = waves[currentWave];
   if (waveCfg && waveSpawnsLeft > 0 && lives > 0) {
     waveSpawnAccumulator += dt;
     while (
@@ -473,11 +574,11 @@ function updateSimulation(dt, now) {
   if (
     waveSpawnsLeft === 0 &&
     enemies.length === 0 &&
-    currentWave < WAVES.length - 1
+    currentWave < waves.length - 1
   ) {
     currentWave++;
-    waveSpawnsLeft = WAVES[currentWave].spawnTypes.length;
-    waveSpawnAccumulator = WAVES[currentWave].spawnIntervalSec;
+    waveSpawnsLeft = waves[currentWave].spawnTypes.length;
+    waveSpawnAccumulator = waves[currentWave].spawnIntervalSec;
   }
 
   for (let i = enemies.length - 1; i >= 0; i--) {
@@ -569,6 +670,7 @@ function tryPlaceTower(gameX, gameY, now) {
 }
 
 function onPointerDown(e) {
+  if (gamePhase === "stageClear") return;
   if (e.pointerType === "mouse" && e.button !== 0) return;
   const now = performance.now();
   const { px, py } = pointerPosRelativeToCanvas(e.clientX, e.clientY);
@@ -615,6 +717,23 @@ if (btnRestart) {
     restartGame();
   });
 }
+if (btnMapAssist) {
+  btnMapAssist.addEventListener("click", function () {
+    showMapAssistOverlay = !showMapAssistOverlay;
+    syncMapAssistButton();
+  });
+  syncMapAssistButton();
+}
+if (btnStageClearNext) {
+  btnStageClearNext.addEventListener("click", function () {
+    confirmNextLevel();
+  });
+}
+if (btnStageClearReplay) {
+  btnStageClearReplay.addEventListener("click", function () {
+    replayCurrentLevelFromDialog();
+  });
+}
 if (window.visualViewport) {
   visualViewport.addEventListener("resize", onResize);
 }
@@ -624,18 +743,10 @@ if (typeof ResizeObserver !== "undefined") {
 
 async function bootstrap() {
   const result = await loadTheme1Paths(pathsJsonUrl);
-  const { roadPath: rp, levelMeta, carrotPos: cp } = getRoadPathForLevel(
-    result.data,
-    levelIndex
-  );
-  roadPath = rp;
-  carrotPos = cp;
-  pathMetrics = buildPathMetrics(roadPath);
-  buildableGrid = computeBuildableGrid(roadPath);
-  loadInfo = {
-    source: result.source + (result.fetchFailed ? "(回退)" : ""),
-    levelLabel: "Level " + levelMeta.level + " (levels[" + levelIndex + "])",
-  };
+  themePathsData = result.data;
+  loadInfo.source = result.source + (result.fetchFailed ? "(回退)" : "");
+  hideStageClearDialog();
+  applyLevelGeometry(levelIndex);
   resetGameState();
   updateLayout();
   requestAnimationFrame(loop);

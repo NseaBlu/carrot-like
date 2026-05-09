@@ -33,8 +33,8 @@ export const EMBEDDED_THEME1_PATHS = {
     {
       level: 2,
       roadPath: [
-        { id: 20, x: 455, y: 525 },
-        { id: 21, x: 175, y: 525 },
+        { id: 20, x: 455, y: 455 },
+        { id: 21, x: 175, y: 455 },
         { id: 22, x: 175, y: 455 },
         { id: 23, x: 105, y: 455 },
         { id: 24, x: 106, y: 245 },
@@ -46,6 +46,7 @@ export const EMBEDDED_THEME1_PATHS = {
         { id: 30, x: 734, y: 175 },
       ],
       startEndMarkers: {
+        start: { x: 455, y: 475 },
         carrotEnd: { x: 735, y: 195 },
       },
     },

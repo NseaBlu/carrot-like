@@ -89,8 +89,10 @@ export const ENEMY_TYPE = {
 
 // —— 波次：spawnTypes 为出场顺序（字符 N/R/T），长度即本波数量 ——
 /** @typedef {{ spawnIntervalSec: number, hpMultiplier: number, spawnTypes: string }} WaveDef */
+
+/** Theme1 关卡 1 基准波次（10 波） */
 /** @type {WaveDef[]} */
-export const WAVES = [
+const THEME1_LEVEL1_WAVES = [
   {
     spawnIntervalSec: 2.3,
     hpMultiplier: 1.0,
@@ -142,6 +144,47 @@ export const WAVES = [
     spawnTypes: "TRTNRRNRTRTR",
   },
 ];
+
+/**
+ * @param {WaveDef[]} src
+ * @param {number} hpFactor
+ * @param {number} intervalFactor
+ */
+function scaleThemeWaves(src, hpFactor, intervalFactor) {
+  return src.map(function (w) {
+    return {
+      spawnIntervalSec: Math.max(
+        0.58,
+        Math.round(w.spawnIntervalSec * intervalFactor * 100) / 100
+      ),
+      hpMultiplier:
+        Math.round(w.hpMultiplier * hpFactor * 100) / 100,
+      spawnTypes: w.spawnTypes,
+    };
+  });
+}
+
+/** Theme1：下标 0=关卡1，1=关卡2，2=关卡3（关卡3 暂用更高缩放占位） */
+/** @type {WaveDef[][]} */
+export const THEME1_LEVEL_WAVES = [
+  THEME1_LEVEL1_WAVES,
+  scaleThemeWaves(THEME1_LEVEL1_WAVES, 1.12, 0.93),
+  scaleThemeWaves(THEME1_LEVEL1_WAVES, 1.22, 0.87),
+];
+
+/**
+ * @param {number} levelIndex — 与 URL ?level= 一致，0 为第一关
+ */
+export function wavesForTheme1Level(levelIndex) {
+  const i = Math.max(
+    0,
+    Math.min(levelIndex | 0, THEME1_LEVEL_WAVES.length - 1)
+  );
+  return THEME1_LEVEL_WAVES[i];
+}
+
+/** 兼容旧代码：等同 Theme1 关卡 1 */
+export const WAVES = THEME1_LEVEL1_WAVES;
 
 // —— 战斗 ——
 export const TOWER_FIRE_INTERVAL_MS = 500;

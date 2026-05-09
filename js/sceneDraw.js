@@ -25,14 +25,31 @@ export function drawDefenseCarrot(ctx, img, cx, cy) {
 }
 
 /**
+ * 辅助模式：整图 TILE 格线、可建格浅蓝填充、不可建格红叉。
  * @param {CanvasRenderingContext2D} ctx — 已处于地图逻辑坐标（translate+scale 之后）
  * @param {{ cols: number, rows: number, tile: number, buildable: boolean[][] }} grid
  * @param {number} scale — 当前视图 scale，用于线宽换算
  */
-export function drawBuildableTowerCells(ctx, grid, scale) {
+export function drawMapAssistGrid(ctx, grid, scale) {
   const { cols, rows, tile, buildable } = grid;
-  const lw = 1.2 / scale;
-  ctx.lineWidth = lw;
+  const lwGrid = 0.85 / scale;
+  ctx.lineWidth = lwGrid;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.14)";
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * tile;
+      const y = r * tile;
+      ctx.strokeRect(
+        x + lwGrid * 0.5,
+        y + lwGrid * 0.5,
+        tile - lwGrid,
+        tile - lwGrid
+      );
+    }
+  }
+
+  const lwBuild = 1.2 / scale;
+  ctx.lineWidth = lwBuild;
   ctx.strokeStyle = "rgba(200, 220, 255, 0.35)";
   ctx.fillStyle = "rgba(120, 160, 255, 0.08)";
   for (let r = 0; r < rows; r++) {
@@ -41,7 +58,30 @@ export function drawBuildableTowerCells(ctx, grid, scale) {
       const x = c * tile;
       const y = r * tile;
       ctx.fillRect(x, y, tile, tile);
-      ctx.strokeRect(x + lw * 0.5, y + lw * 0.5, tile - lw, tile - lw);
+      ctx.strokeRect(
+        x + lwBuild * 0.5,
+        y + lwBuild * 0.5,
+        tile - lwBuild,
+        tile - lwBuild
+      );
+    }
+  }
+
+  const pad = tile * 0.2;
+  ctx.strokeStyle = "rgba(255, 72, 72, 0.82)";
+  ctx.lineWidth = 2.4 / scale;
+  ctx.lineCap = "round";
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (buildable[r][c]) continue;
+      const x = c * tile;
+      const y = r * tile;
+      ctx.beginPath();
+      ctx.moveTo(x + pad, y + pad);
+      ctx.lineTo(x + tile - pad, y + tile - pad);
+      ctx.moveTo(x + tile - pad, y + pad);
+      ctx.lineTo(x + pad, y + tile - pad);
+      ctx.stroke();
     }
   }
 }
