@@ -1,0 +1,73 @@
+{
+  "_comment": "保卫萝卜 Cocos 学习项目 — Theme1 路径与起点终点。怪物移动请使用 roadPath；UI 对齐 Cocos 起点/萝卜可用 startEndMarkers。",
+  "coordinateSystem": {
+    "origin": "与 Tiled 地图左上角一致；y 向下增大",
+    "tileSize": { "width": 70, "height": 70 },
+    "mapPixelSize": { "width": 910, "height": 490 },
+    "roadPointFormula": "center = objectTopLeft + tileSize/2（与 gamePlay.ts initRoads 一致）",
+    "startEndFormula": "与 gamePlay.ts initStartPoint/initEndPoint：+ tileSize/2，y 再 +20（group 偏移此处为 0）"
+  },
+  "levels": [
+    {
+      "themeID": 1,
+      "level": 1,
+      "tmxRelativePath": "assets/resources/GamePlay/Theme/Theme1/BG1/Level1.tmx",
+      "roadPath": [
+        { "id": 2, "x": 105, "y": 175 },
+        { "id": 3, "x": 245, "y": 175 },
+        { "id": 4, "x": 245, "y": 455 },
+        { "id": 5, "x": 665, "y": 455 },
+        { "id": 6, "x": 665, "y": 175 },
+        { "id": 7, "x": 805, "y": 175 }
+      ],
+      "startEndMarkers": {
+        "_note": "与 Cocos 里起点/萝卜节点位置对齐；怪物出生用 roadPath[0]，可能与起点标记差 20px（仅 y）",
+        "start": { "id": 27, "x": 105, "y": 195 },
+        "carrotEnd": { "id": 28, "x": 805, "y": 195 }
+      }
+    },
+    {
+      "themeID": 1,
+      "level": 2,
+      "tmxRelativePath": "assets/resources/GamePlay/Theme/Theme1/BG2/Level2.tmx",
+      "roadPath": [
+        { "id": 20, "x": 455, "y": 525 },
+        { "id": 21, "x": 175, "y": 525 },
+        { "id": 22, "x": 175, "y": 455 },
+        { "id": 23, "x": 105, "y": 455 },
+        { "id": 24, "x": 106, "y": 245 },
+        { "id": 25, "x": 315, "y": 245 },
+        { "id": 26, "x": 315, "y": 315 },
+        { "id": 27, "x": 595, "y": 315 },
+        { "id": 28, "x": 595, "y": 455 },
+        { "id": 29, "x": 735, "y": 455 },
+        { "id": 30, "x": 734, "y": 175 }
+      ],
+      "startEndMarkers": {
+        "start": { "id": 36, "x": 455, "y": 545 },
+        "carrotEnd": { "id": 37, "x": 735, "y": 195 }
+      }
+    },
+    {
+      "themeID": 1,
+      "level": 3,
+      "tmxRelativePath": "assets/resources/GamePlay/Theme/Theme1/BG3/Level3.tmx",
+      "roadPath": [
+        { "id": 55, "x": 105, "y": 175 },
+        { "id": 56, "x": 385, "y": 175 },
+        { "id": 57, "x": 385, "y": 245 },
+        { "id": 58, "x": 525, "y": 245 },
+        { "id": 59, "x": 525, "y": 385 },
+        { "id": 60, "x": 385, "y": 385 },
+        { "id": 61, "x": 385, "y": 315 },
+        { "id": 62, "x": 245, "y": 315 },
+        { "id": 63, "x": 245, "y": 455 },
+        { "id": 64, "x": 805, "y": 455 }
+      ],
+      "startEndMarkers": {
+        "start": { "id": 53, "x": 105, "y": 195 },
+        "carrotEnd": { "id": 54, "x": 805, "y": 475 }
+      }
+    }
+  ]
+}

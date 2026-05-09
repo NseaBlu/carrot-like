@@ -1,0 +1,8 @@
+# 调试 / 本地
+.cursor/
+*.log
+
+# 常见
+node_modules/
+Thumbs.db
+.DS_Store
